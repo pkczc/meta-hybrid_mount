@@ -55,7 +55,7 @@ fn collect_module_files(module_paths: &[PathBuf], extra_partitions: &[String]) -
                 let node = system.children.entry(partition.to_string())
                     .or_insert_with(|| Node::new_root(partition));
                 if node.file_type == NodeFileType::Symlink {
-                    log::debug!("converting symlink node '{}' to directory", partition);
+                    log::debug!("converting symlink node '{}' to directory to avoid system overlay", partition);
                     node.file_type = NodeFileType::Directory;
                     node.module_path = None; 
                 }
