@@ -5,7 +5,7 @@ mod mount;
 mod utils;
 
 use std::path::{Path, PathBuf};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use mimalloc::MiMalloc;
 
@@ -54,6 +54,20 @@ fn run() -> Result<()> {
                 let config = load_config(&cli)?;
                 println!("{}", serde_json::to_string(&config)?); 
                 return Ok(()); 
+            },
+            Commands::SaveConfig { payload } => {
+                let json_bytes = (0..payload.len())
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(&payload[i..i + 2], 16))
+                    .collect::<Result<Vec<u8>, _>>()
+                    .context("Failed to decode hex payload")?;
+                
+                let config: Config = serde_json::from_slice(&json_bytes)
+                    .context("Failed to parse config JSON")?;
+                
+                config.save_to_file(CONFIG_FILE_DEFAULT)?;
+                println!("Configuration saved successfully.");
+                return Ok(());
             },
             Commands::Storage => { 
                 storage::print_status()?; 
