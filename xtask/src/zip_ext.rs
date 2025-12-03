@@ -16,7 +16,7 @@ pub fn zip_create_from_directory_with_options<F>(
     cb_file_options: F,
 ) -> ZipResult<()>
 where
-    F: Fn(&PathBuf) -> FileOptions,
+    F: Fn(&PathBuf) -> FileOptions<()>,
 {
     let file = File::create(archive_file)?;
     let zip_writer = ZipWriter::new(file);
@@ -29,7 +29,7 @@ fn create_from_directory_with_options<F>(
     cb_file_options: F,
 ) -> ZipResult<()>
 where
-    F: Fn(&PathBuf) -> FileOptions,
+    F: Fn(&PathBuf) -> FileOptions<()>,
 {
     let mut paths_queue: Vec<PathBuf> = vec![];
     paths_queue.push(directory.to_path_buf());
