@@ -114,7 +114,12 @@ fn build(release: bool, arch: Arch) -> Result<()> {
     let cc_path = toolchain_bin.join(&cc_name);
     let ar_path = toolchain_bin.join("llvm-ar");
 
+    if !cc_path.exists() {
+        anyhow::bail!("Compiler not found at: {}", cc_path.display());
+    }
+
     println!("Building for ABI: {} (API {})", arch.android_abi(), api);
+    println!("Compiler: {}", cc_path.display());
 
     let mut cmd = Command::new(&cargo);
     cmd.arg("build")
@@ -128,12 +133,19 @@ fn build(release: bool, arch: Arch) -> Result<()> {
         cmd.arg("--release");
     }
 
+    let current_path = env::var("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", toolchain_bin.display(), current_path);
+    cmd.env("PATH", new_path);
+
     let env_target = arch.target().replace('-', "_");
+    let env_target_upper = env_target.to_uppercase();
+
     cmd.env(format!("CC_{}", env_target), &cc_path);
     cmd.env(format!("AR_{}", env_target), &ar_path);
-    
     cmd.env("CC", &cc_path);
     cmd.env("AR", &ar_path);
+
+    cmd.env(format!("CARGO_TARGET_{}_LINKER", env_target_upper), &cc_path);
 
     let status = cmd.status().context("Failed to run cargo build")?;
     if !status.success() {
