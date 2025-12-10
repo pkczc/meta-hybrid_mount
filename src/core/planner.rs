@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use anyhow::Result;
+use walkdir::WalkDir;
 use crate::{conf::config, defs, core::inventory::Module};
 
 #[derive(Debug, Clone)]
@@ -29,7 +30,62 @@ pub struct MountPlan {
     pub magic_module_ids: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ConflictEntry {
+    pub partition: String,
+    pub relative_path: String,
+    pub contending_modules: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct ConflictReport {
+    pub details: Vec<ConflictEntry>,
+}
+
 impl MountPlan {
+    pub fn analyze_conflicts(&self) -> ConflictReport {
+        let mut conflicts = Vec::new();
+
+        for op in &self.overlay_ops {
+            let mut file_map: HashMap<String, Vec<String>> = HashMap::new();
+
+            for layer_path in &op.lowerdirs {
+                let module_id = layer_path.parent()
+                    .and_then(|p| p.file_name())
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "UNKNOWN".into());
+
+                for entry in WalkDir::new(layer_path).min_depth(1) {
+                    if let Ok(entry) = entry {
+                        if !entry.file_type().is_file() { continue; }
+
+                        if let Ok(rel) = entry.path().strip_prefix(layer_path) {
+                            let rel_str = rel.to_string_lossy().to_string();
+                            file_map.entry(rel_str).or_default().push(module_id.clone());
+                        }
+                    }
+                }
+            }
+
+            for (rel_path, modules) in file_map {
+                if modules.len() > 1 {
+                    conflicts.push(ConflictEntry {
+                        partition: op.partition_name.clone(),
+                        relative_path: rel_path,
+                        contending_modules: modules,
+                    });
+                }
+            }
+        }
+
+        conflicts.sort_by(|a, b| {
+            a.partition.cmp(&b.partition)
+                .then_with(|| a.relative_path.cmp(&b.relative_path))
+        });
+
+        ConflictReport { details: conflicts }
+    }
+
     pub fn print_visuals(&self) {
         if self.overlay_ops.is_empty() && self.magic_module_paths.is_empty() && self.hymo_ops.is_empty() {
             log::info!(">> Empty plan. Standby mode.");
@@ -139,7 +195,6 @@ pub fn generate(
             continue;
         }
 
-        // OverlayFS (Default/Auto)
         if !content_path.exists() {
             log::debug!("Planner: Module {} content missing in storage, skipping", module.id);
             continue;

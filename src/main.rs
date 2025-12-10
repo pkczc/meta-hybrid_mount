@@ -96,20 +96,52 @@ fn run() -> Result<()> {
             .filter_level(if config.verbose { log::LevelFilter::Debug } else { log::LevelFilter::Info })
             .init();
         
-        log::info!(":: DRY-RUN MODE ACTIVE ::");
-        log::info!("No file system changes will be made.");
-
+        log::info!(":: DRY-RUN / DIAGNOSTIC MODE ::");
+        
         let module_list = inventory::scan(&config.moduledir, &config)?;
-        log::info!(">> Inventory Scan: Found {} enabled modules.", module_list.len());
-
-        log::info!(">> simulating sync (skipped)");
-        log::info!(">> simulating storage setup (skipped)");
-        log::info!(">> Planning mount strategy using source files...");
+        log::info!(">> Inventory: Found {} modules", module_list.len());
         
         let plan = planner::generate(&config, &module_list, &config.moduledir)?;
         plan.print_visuals();
         
-        log::info!(">> Dry-run complete. Exiting.");
+        log::info!(">> Analyzing File Conflicts...");
+        let report = plan.analyze_conflicts();
+        if report.details.is_empty() {
+            log::info!("   No file conflicts detected. Clean.");
+        } else {
+            log::warn!("!! DETECTED {} FILE CONFLICTS !!", report.details.len());
+            for c in report.details {
+                log::warn!("   [{}] {} <== {:?}", c.partition, c.relative_path, c.contending_modules);
+            }
+        }
+
+        log::info!(">> Running System Diagnostics...");
+        let issues = executor::diagnose_plan(&plan);
+        let mut critical_count = 0;
+        
+        for issue in issues {
+            match issue.level {
+                core::executor::DiagnosticLevel::Critical => {
+                    log::error!("[CRITICAL][{}] {}", issue.context, issue.message);
+                    critical_count += 1;
+                },
+                core::executor::DiagnosticLevel::Warning => {
+                    log::warn!("[WARN][{}] {}", issue.context, issue.message);
+                },
+                core::executor::DiagnosticLevel::Info => {
+                    log::info!("[INFO][{}] {}", issue.context, issue.message);
+                }
+            }
+        }
+
+        if critical_count > 0 {
+            log::error!(">> ❌ DIAGNOSTICS FAILED: {} critical issues found.", critical_count);
+            log::error!(">> Mounting now would likely result in a bootloop.");
+            std::process::exit(1);
+        } else {
+            log::info!(">> ✅ Diagnostics passed. System looks healthy.");
+        }
+        
         return Ok(());
     }
 
