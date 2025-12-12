@@ -58,7 +58,7 @@
   fill: var(--md-sys-color-on-secondary-container);
 }
 .nav-tab.active .label {
-  font-weight: 700;
+  font-weight: 600;
 }
 .nav-tab:active .icon-container {
   opacity: 0.8;

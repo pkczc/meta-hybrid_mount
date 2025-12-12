@@ -30,7 +30,7 @@
 }
 .app-name {
   font-size: 32px;  
-  font-weight: 800;
+  font-weight: 600;
   color: var(--md-sys-color-on-surface);
   margin-top: 8px;
   letter-spacing: -0.5px;
