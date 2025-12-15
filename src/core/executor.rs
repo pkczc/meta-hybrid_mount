@@ -9,7 +9,8 @@ use crate::{
     conf::config, 
     mount::{magic, overlay, hymofs::HymoFs}, 
     utils,
-    core::planner::MountPlan
+    core::planner::MountPlan,
+    defs
 };
 
 pub struct ExecutionResult {
@@ -106,12 +107,28 @@ pub fn execute(plan: &MountPlan, config: &config::Config) -> Result<ExecutionRes
             if let Err(e) = HymoFs::clear() {
                 log::warn!("Failed to reset HymoFS rules: {}", e);
             }
+            if let Err(e) = utils::ensure_dir_exists(defs::HYMO_MIRROR_DIR) {
+                log::warn!("Failed to create hymo mirror dir: {}", e);
+            }
+
             for op in &plan.hymo_ops {
                 let part_name = op.target.file_name()
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| "unknown".to_string());
-                log::debug!("Injecting {} -> {}", op.source.display(), op.target.display());
-                match HymoFs::inject_directory(&op.target, &op.source) {
+                
+                let mirror_base = Path::new(defs::HYMO_MIRROR_DIR).join(&op.module_id);
+                if let Err(e) = std::fs::create_dir_all(&mirror_base) {
+                    log::warn!("Failed to create mirror dir for {}: {}", op.module_id, e);
+                    continue;
+                }
+                
+                if let Err(e) = overlay::bind_mount(&op.source, &mirror_base, true) {
+                    log::warn!("Failed to bind mount mirror for {}: {}", op.module_id, e);
+                }
+
+                log::debug!("Injecting {} (via mirror) -> {}", op.module_id, op.target.display());
+                
+                match HymoFs::inject_directory(&op.target, &mirror_base) {
                     Ok(_) => {
                         if let Some(root) = extract_module_root(&op.source) {
                             global_success_map.entry(root).or_default().insert(part_name);
