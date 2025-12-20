@@ -48,6 +48,36 @@ struct OverlayResult {
     success_records: Vec<(PathBuf, String)>,
 }
 
+fn repair_rw_contexts() {
+    let rw_root = Path::new(defs::SYSTEM_RW_DIR);
+    if !rw_root.exists() {
+        return;
+    }
+
+    log::info!(">> Applying SELinux contexts for RW partition structures...");
+
+    for part in defs::BUILTIN_PARTITIONS {
+        let part_dir = rw_root.join(part);
+        let reference_path = Path::new("/").join(part);
+
+        if part_dir.exists() && reference_path.exists() {
+            if let Err(e) = utils::copy_path_context(&reference_path, &part_dir) {
+                log::warn!("Failed to set context for {}: {}", part_dir.display(), e);
+            }
+
+            let upper_dir = part_dir.join("upperdir");
+            if upper_dir.exists() {
+                let _ = utils::copy_path_context(&part_dir, &upper_dir);
+            }
+
+            let work_dir = part_dir.join("workdir");
+            if work_dir.exists() {
+                let _ = utils::copy_path_context(&part_dir, &work_dir);
+            }
+        }
+    }
+}
+
 pub fn diagnose_plan(plan: &MountPlan) -> Vec<DiagnosticIssue> {
     let mut issues = Vec::new();
     for op in &plan.overlay_ops {
@@ -161,14 +191,28 @@ pub fn execute(plan: &MountPlan, config: &config::Config) -> Result<ExecutionRes
         }
     }
 
+    repair_rw_contexts();
+
     log::info!(">> Phase 2: OverlayFS Execution...");
     let overlay_results: Vec<OverlayResult> = plan.overlay_ops.par_iter()
         .map(|op| {
             let lowerdir_strings: Vec<String> = op.lowerdirs.iter()
                 .map(|p: &PathBuf| p.display().to_string())
                 .collect();
+            
+            let rw_root = Path::new(defs::SYSTEM_RW_DIR);
+            let part_rw = rw_root.join(&op.partition_name);
+            let upper = part_rw.join("upperdir");
+            let work = part_rw.join("workdir");
+
+            let (upper_opt, work_opt) = if upper.exists() && work.exists() {
+                (Some(upper), Some(work))
+            } else {
+                (None, None)
+            };
+
             log::info!("Mounting {} [OVERLAY] ({} layers)", op.target, lowerdir_strings.len());
-            if let Err(e) = overlay::mount_overlay(&op.target, &lowerdir_strings, None, None, config.disable_umount) {
+            if let Err(e) = overlay::mount_overlay(&op.target, &lowerdir_strings, work_opt, upper_opt, config.disable_umount) {
                 log::warn!("OverlayFS failed for {}: {}. Triggering fallback.", op.target, e);
                 let mut local_magic = Vec::new();
                 let mut local_fallback_ids = Vec::new();
