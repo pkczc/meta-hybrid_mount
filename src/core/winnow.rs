@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use crate::conf::config::WinnowingTable;
+use crate::core::planner::ConflictEntry;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChaffConflict {
@@ -11,11 +12,11 @@ pub struct ChaffConflict {
 }
 
 pub fn sift_conflicts(
-    conflicts: Vec<crate::core::planner::ConflictDetail>,
+    conflicts: Vec<ConflictEntry>,
     table: &WinnowingTable
 ) -> Vec<ChaffConflict> {
     conflicts.into_iter().map(|c| {
-        let path_str = format!("/system/{}", c.relative_path); 
+        let path_str = format!("/{}/{}", c.partition, c.relative_path); 
         let forced_module = table.get_preferred_module(Path::new(&path_str));
         
         let selected = if let Some(forced) = &forced_module {
