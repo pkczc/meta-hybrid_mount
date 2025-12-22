@@ -14,6 +14,7 @@
   const REPO_OWNER = 'YuzakiKokuban';
   const REPO_NAME = 'meta-hybrid_mount';
   const DONATE_LINK = `https://afdian.com/a/${REPO_OWNER}`;
+  const TELEGRAM_LINK = 'https://t.me/c/hybridmountchat';
   const CACHE_KEY = 'hm_contributors_cache';
   const CACHE_DURATION = 1000 * 60 * 60;
 
@@ -31,7 +32,6 @@
   let loading = $state(true);
   let error = $state(false);
   let version = $state(store.version);
-
   onMount(async () => {
     try {
         const v = await API.getVersion();
@@ -41,7 +41,6 @@
     }
     await fetchContributors();
   });
-
   async function fetchContributors() {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
@@ -67,7 +66,6 @@
         const hasBotName = user.login.toLowerCase().includes('bot');
         return !isBotType && !hasBotName;
       });
-
       const detailPromises = filteredList.map(async (user: Contributor) => {
         try {
             const detailRes = await fetch(user.url);
@@ -80,7 +78,6 @@
         }
         return user;
       });
-
       contributors = await Promise.all(detailPromises);
       localStorage.setItem(CACHE_KEY, JSON.stringify({
         data: contributors,
@@ -140,6 +137,17 @@
     >
         <md-icon slot="icon"><svg viewBox="0 0 24 24"><path d={ICONS.donate} /></svg></md-icon>
         {store.L.info.donate}
+    </md-filled-tonal-button>
+
+    <md-filled-tonal-button 
+       class="action-btn"
+       onclick={(e) => handleLink(e, TELEGRAM_LINK)}
+       role="button"
+       tabindex="0"
+       onkeydown={() => {}}
+    >
+        <md-icon slot="icon"><svg viewBox="0 0 24 24"><path d={ICONS.telegram} /></svg></md-icon>
+        Telegram
     </md-filled-tonal-button>
   </div>
 
